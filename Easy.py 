@@ -1,0 +1,227 @@
+import tkinter as tk
+from tkinter import ttk
+import time
+
+# 変数を保存するための辞書（メモリ）
+variables = {}
+
+# --- 1. 自作言語の処理エンジン ---
+def run_my_language(code):
+    global variables
+    lines = code.split("\n")
+    outputs = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # 消去 / clear / xóa
+        if line in ["消去", "clear", "xóa"]:
+            outputs = ["CLEAR_SIGNAL"]
+            continue
+
+        # 待つ / wait / chờ
+        if any(line.startswith(cmd + " ") for cmd in ["待つ", "wait", "chờ"]):
+            _, sec_str = line.split(" ", 1)
+            try:
+                sec = float(evaluate_expression(sec_str.strip()))
+                time.sleep(sec)
+                outputs.append(f"[WAIT] {sec} sec")
+            except:
+                outputs.append(f"❌ Wait Error: {line}")
+            continue
+
+        # 保存 / let / lưu
+        if any(line.startswith(cmd + " ") for cmd in ["保存", "let", "lưu"]):
+            try:
+                _, expr = line.split(" ", 1)
+                var_name, var_expr = expr.split("=", 1)
+                var_name = var_name.strip()
+                var_expr = var_expr.strip()
+                result = evaluate_expression(var_expr)
+                variables[var_name] = result
+                outputs.append(f"[SAVE] {var_name} = {result}")
+            except:
+                outputs.append(f"❌ Save Error: {line}")
+            continue
+
+        # もし / if / nếu
+        if any(line.startswith(cmd + " ") for cmd in ["もし", "if", "nếu"]):
+            try:
+                _, rest = line.split(" ", 1)
+                sub_commands = ["表示", "print", "in", "応援", "cheer", "cổvũ", "保存", "let", "lưu"]
+                target_cmd = None
+                for scmd in sub_commands:
+                    if f" {scmd} " in f" {rest} ":
+                        target_cmd = scmd
+                        break
+                
+                if target_cmd:
+                    cond_part, cmd_part = rest.split(target_cmd, 1)
+                    is_true = eval_condition(cond_part.strip())
+                    
+                    if is_true:
+                        full_sub_line = f"{target_cmd} {cmd_part.strip()}"
+                        sub_output = run_my_language(full_sub_line)
+                        if sub_output:
+                            outputs.append(sub_output)
+                    else:
+                        outputs.append("[IF] Condition False (Skip)")
+                else:
+                    outputs.append(f"❌ If Syntax Error: {line}")
+            except:
+                outputs.append(f"❌ If Error: {line}")
+            continue
+
+        # 繰り返す / loop / lặp
+        if any(line.startswith(cmd + " ") for cmd in ["繰り返す", "loop", "lặp"]):
+            try:
+                _, rest = line.split(" ", 1)
+                count_str, cmd_part = rest.split(" ", 1)
+                count = int(evaluate_expression(count_str.strip()))
+                
+                loop_outputs = []
+                for _ in range(count):
+                    sub_output = run_my_language(cmd_part.strip())
+                    if sub_output:
+                        loop_outputs.append(sub_output)
+                
+                outputs.append(f"[LOOP {count} times]\n" + "\n".join(loop_outputs))
+            except:
+                outputs.append(f"❌ Loop Error: {line}")
+            continue
+
+        # 表示 / print / in
+        if any(line.startswith(cmd + " ") for cmd in ["表示", "print", "in"]):
+            _, expr = line.split(" ", 1)
+            result = evaluate_expression(expr.strip())
+            outputs.append(str(result))
+            continue
+
+        # 応援 / cheer / cổvũ
+        if any(line.startswith(cmd + " ") for cmd in ["応援", "cheer", "cổvũ"]):
+            _, expr = line.split(" ", 1)
+            result = evaluate_expression(expr.strip())
+            outputs.append(f"[CHEER] >>> {result} <<<")
+            continue
+
+        outputs.append(f"❌ Syntax Error: {line}")
+            
+    return "\n".join(outputs)
+
+def evaluate_expression(expr):
+    if str(expr) in variables:
+        return variables[str(expr)]
+    for op in ["+", "-", "*", "/"]:
+        if op in str(expr):
+            expr = str(expr).replace(op, f" {op} ")
+    tokens = str(expr).split()
+    if not tokens:
+        return expr
+    try:
+        first_token = tokens
+        result = variables[first_token] if first_token in variables else int(first_token)
+        i = 1
+        while i < len(tokens):
+            op = tokens[i]
+            next_token = tokens[i+1]
+            next_val = variables[next_token] if next_token in variables else int(next_token)
+            if op == "+": result += next_val
+            elif op == "-": result -= next_val
+            elif op == "*": result *= next_val
+            elif op == "/": result = result // next_val
+            i += 2
+        return result
+    except:
+        return expr
+
+def eval_condition(cond_str):
+    for op in [">", "<", "=="]:
+        if op in cond_str:
+            left, right = cond_str.split(op, 1)
+            left_val = evaluate_expression(left.strip())
+            right_val = evaluate_expression(right.strip())
+            if op == ">": return int(left_val) > int(right_val)
+            elif op == "<": return int(left_val) < int(right_val)
+            elif op == "==": return int(left_val) == int(right_val)
+    return False
+
+
+# --- 2. 画面の多言語テキスト＆サンプル設定（絵文字を完全削除） ---
+LANG_TEXTS = {
+    "日本語": {
+        "title": "ウルトラ自作言語エディタ", "label": "コードを入力してください:", "btn": "▶ 実行する", "output": "実行結果:",
+        "hint": "★ 保存 / 表示 / 応援 / もし / 繰り返す / 待つ",
+        "sample": "保存 ポイント = 120\nもし ポイント > 100 応援 合格！\n待つ 1\n繰り返す 3 表示 ヤッホー"
+    },
+    "English": {
+        "title": "Ultra Custom Editor", "label": "Enter Code:", "btn": "▶ RUN", "output": "Output:",
+        "hint": "* let / print / cheer / if / loop / wait",
+        "sample": "let score = 120\nif score > 100 cheer PASS!\nwait 1\nloop 3 print Hello"
+    },
+    "Tiếng Việt": {
+        "title": "Trình chỉnh sửa Ultra", "label": "Nhập mã:", "btn": "▶ CHẠY", "output": "Kết quả:",
+        "hint": "* lưu / in / cổvũ / nếu / lặp / chờ",
+        "sample": "lưu diem = 120\nnếu diem > 100 cổvũ ĐẬU!\nchờ 1\nlặp 3 in XinChào"
+    }
+}
+
+
+# --- 3. スマホ画面（GUI）の構築 ---
+root = tk.Tk()
+root.title("My Ultra Language App")
+root.geometry("400x600")
+
+APP_FONT = ("Helvetica", 12)
+
+def on_language_change(event=None):
+    lang = lang_combo.get()
+    text = LANG_TEXTS[lang]
+    label_code.config(text=text["label"])
+    btn_run.config(text=text["btn"])
+    label_out.config(text=text["output"])
+    label_hint.config(text=text["hint"])
+    
+    code_entry.delete("1.0", tk.END)
+    code_entry.insert("1.0", text["sample"])
+
+frame_top = tk.Frame(root)
+frame_top.pack(fill="x", padx=10, pady=5)
+
+lang_combo = ttk.Combobox(frame_top, values=list(LANG_TEXTS.keys()), state="readonly", width=10, font=APP_FONT)
+lang_combo.set("日本語")
+lang_combo.pack(side="left")
+lang_combo.bind("<<ComboboxSelected>>", on_language_change)
+
+# 📊 文字化け対策：フォントサイズを微調整して確実に収まるように設定
+label_hint = tk.Label(frame_top, text="", fg="blue", font=("Helvetica", 9, "bold"))
+label_hint.pack(side="left", padx=5)
+
+label_code = tk.Label(root, text="", anchor="w", font=APP_FONT)
+label_code.pack(fill="x", padx=10, pady=(10, 2))
+code_entry = tk.Text(root, height=10, font=APP_FONT)
+code_entry.pack(fill="both", expand=True, padx=10, pady=2)
+
+def press_run():
+    user_code = code_entry.get("1.0", tk.END)
+    result = run_my_language(user_code)
+    
+    output_display.config(state="normal")
+    if result == "CLEAR_SIGNAL":
+        output_display.delete("1.0", tk.END)
+    else:
+        output_display.delete("1.0", tk.END)
+        output_display.insert("1.0", str(result))
+    output_display.config(state="disabled")
+
+btn_run = tk.Button(root, text="", bg="#28a745", fg="white", font=("Helvetica", 14, "bold"), command=press_run)
+btn_run.pack(fill="x", padx=10, pady=10)
+
+label_out = tk.Label(root, text="", anchor="w", font=APP_FONT)
+label_out.pack(fill="x", padx=10, pady=(10, 2))
+output_display = tk.Text(root, height=8, bg="#f0f0f0", font=APP_FONT, state="disabled")
+output_display.pack(fill="both", expand=True, padx=10, pady=(2, 10))
+
+on_language_change()
+root.mainloop()
